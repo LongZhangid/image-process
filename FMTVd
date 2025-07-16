@@ -1,3 +1,13 @@
+"""
+By Long Zhang in CIOMP
+2025/7/16
+ref: Tao, Min, Junfeng Yang, and Bingsheng He. 
+    "Alternating direction algorithms for total variation 
+    deconvolution in image reconstruction." TR0918, Department 
+    of Mathematics, Nan**g University (2009).
+"""
+
+
 import numpy as np
 from matplotlib import pyplot as plt
 from PIL import Image
