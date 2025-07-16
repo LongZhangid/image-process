@@ -1,4 +1,4 @@
-This code solve the inverse problem by ADMM:
+This code (FTVd) solve the inverse problem by ADMM:
 
   min_X || DX ||_2 + μ / 2 || K * X - F ||_F ^ 2
   
@@ -22,3 +22,10 @@ We can use parameter opt = 'L2'  to choose the L2 constraint, or opt = 'L1' to c
 ![example2](https://github.com/user-attachments/assets/f7176ae3-96ad-4366-9401-5f18071e6188)
 
 For details introduction, please read the theory.pdf file.
+
+2025/07/16 update:
+
+Now, we update this code (FMTVd) that can solve multichanneel information fusion image:
+
+<img width="1200" height="600" alt="example3" src="https://github.com/user-attachments/assets/80fc5e82-09bf-46b6-a935-21546714fcb8" />
+
