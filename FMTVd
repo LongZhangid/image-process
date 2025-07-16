@@ -1,0 +1,201 @@
+import numpy as np
+from matplotlib import pyplot as plt
+from PIL import Image
+
+
+class FMTVd:
+    """
+    Image restoration using the ADMM algorithm.
+    Problem:
+        min_X || I * DX ||_2 + μ / 2 || K * X - F ||_2^2
+        Method:
+        ADMM
+    """
+    def __init__(self, F, H, ref, mu, beta, gamma, max_iter=1000, tol=1e-6):
+        self.m, self.n, self.d = F.shape
+        self.H = H      # H should be (size, size, d, d)
+        self.F = F
+        self.ref = ref
+        self.mu = mu
+        self.beta = beta
+        self.gamma = gamma
+        self.max_iter = max_iter
+        self.tol = tol
+        self.Dx = np.zeros((2, 2))
+        self.Dx[0, 0] = 1
+        self.Dx[0, 1] = -1
+        self.Dy = self.Dx.T
+
+    def _solver(self):
+        """
+        Solve the image restoration problem using ADMM.
+        """
+        self.fH = self._FFT(self.H, (self.m, self.n))
+        self.fKTF = np.sum(np.conj(self.fH) * self._FFT(self.F)[..., np.newaxis], axis=-2)
+        self.fDx = np.conj(self._FFT(self.Dx, (self.m, self.n)))
+        self.fDy = np.conj(self._FFT(self.Dy, (self.m, self.n)))
+        self.fHtH = np.zeros((self.m, self.n, self.d, self.d), dtype=complex)
+        self.fDtD = np.abs(self.fDx) ** 2 + np.abs(self.fDy ** 2)
+        for i in range(self.d):     # Output channels i
+            for j in range(self.d):      # Output channels j
+                for k in range(self.d):     # Input channels k
+                    self.fHtH[:, :, i, j] += np.conj(self.fH[:, :, k, i]) * self.fH[:, :, k, j]
+        self.A = self.mu * self.fHtH
+        self.A += self.beta * self.fDtD[..., np.newaxis, np.newaxis] * np.eye(self.d)[np.newaxis, np.newaxis, ...]
+        self.X = self.F.copy()
+        self.λ = [np.zeros(self.F.shape), np.zeros(self.F.shape)]
+        self.snrl = []
+        for i in range(self.max_iter):
+            X_old = self.X.copy()
+            self._update_Y()
+            self._update_X()
+            self._update_λ()
+            snr_value = self._SNR(self.X, self.ref)
+            self.snrl.append(snr_value)
+            if np.linalg.norm(self.X - X_old)/np.linalg.norm(self.X) < self.tol:
+                print(f"Convergence reached at iteration {i+1}, SNR: {snr_value:.2f} dB")
+                break
+        else:
+            print("Rearching Maximum iterations without convergence.")
+        return self.X
+
+    def _update_Y(self):
+        """
+        Update the auxiliary variable Y.
+        """
+        Z1 = self._dif(self.X)[0] + self.λ[0] / self.beta
+        Z2 = self._dif(self.X)[1] + self.λ[1] / self.beta
+        Z_norm = np.sqrt(np.sum(Z1**2 + Z2**2, axis=-1))[..., np.newaxis]
+        Z_norm[Z_norm <= 1e-5] = 1  # Avoid division by zero
+        Y1 = Z1 / Z_norm * np.maximum(Z_norm - 1 / self.beta, 0)
+        Y2 = Z2 / Z_norm * np.maximum(Z_norm - 1 / self.beta, 0)
+        self.Y = [Y1, Y2]
+
+    def _update_X(self):
+        """
+        Update the primal variable X.
+        """
+        B1 = self.Y[0] - self.λ[0] / self.beta
+        B2 = self.Y[1] - self.λ[1] / self.beta
+        RHS = self.mu * self.fKTF + self._FFT(self.beta * self._div(B1, B2))
+        X = self._IFFT(np.linalg.solve(self.A, RHS[..., np.newaxis]))
+        self.X = np.squeeze(X)
+
+    def _update_λ(self):
+        """
+        Update the dual variable λ.
+        """
+        self.λ[0] -= self.beta * self.gamma * (self.Y[0] - self._dif(self.X)[0])
+        self.λ[1] -= self.beta * self.gamma * (self.Y[1] - self._dif(self.X)[1])
+
+    def _FFT(self, data, shape=None):
+        """
+        Perform FFT on the data.
+        """
+        if shape is None:
+            return np.fft.fft2(data, axes=(0, 1))
+        return np.fft.fft2(data, s=shape, axes=(0, 1))
+    
+    def _IFFT(self, data):
+        """
+        Perform inverse FFT on the data.
+        """
+        return np.fft.ifft2(data, axes=(0, 1)).real
+    
+    def _dif(self, X):
+        """
+        Compute the finite differences of the image X.
+        """
+        Dx = np.diff(X, axis=1, append=X[:, 0:1, :])
+        Dy = np.diff(X, axis=0, append=X[0:1, :, :])
+        return [Dx, Dy]
+    
+    def _div(self, X, Y):
+        """
+        Compute the negative divergence of the image.
+        """
+        Dx = np.diff(X, axis=1, prepend=X[:, -1:, :])
+        Dy = np.diff(Y, axis=0, prepend=Y[-1:, :, :])
+        return -Dx - Dy
+    
+    def _SNR(self, X, ref):
+        """
+        Compute the Signal-to-Noise Ratio (SNR) between X and the reference image.
+        """
+        noise = X - ref
+        snr_value = 10 * np.log10(np.max(ref**2) / np.mean(noise**2))
+        return snr_value
+    
+
+def restore_image(F, H, ref, mu=100, beta=20, gamma=1.618, max_iter=500, tol=1e-6):
+    """
+    Restore the image using the FMTVd algorithm.
+    """
+    model = FMTVd(F, H, ref, mu, beta, gamma, max_iter, tol)
+    restored_image = model._solver()
+    snr = model.snrl
+    return restored_image, snr
+
+def blur_image(img: np.array, H: np.array) -> np.array:
+    """
+    Generate a blurred image using the convolution with kernel H.
+    """
+    nimg = np.sum(np.fft.fft2(img, axes=(0, 1))[..., np.newaxis] * np.fft.fft2(H, s=img.shape[:2], axes=(0, 1)), axis=-2)
+    return np.fft.ifft2(nimg, axes=(0, 1)).real
+
+def gaussian(size, sigma=1.0):
+    """
+    Generate a Gaussian kernel.
+    """
+    ax = np.arange(-size // 2 + 1, size // 2 + 1)
+    xx, yy = np.meshgrid(ax, ax)
+    kernel = np.exp(-(xx**2 + yy**2) / (2 * sigma**2))
+    return kernel / np.sum(kernel)
+
+if __name__ == "__main__":
+    # Load an image
+    img = Image.open("./restory_image/colors.png")
+    img = img.convert("RGB")
+    img = np.array(img, dtype=np.float32)
+    img /= np.max(img)  # Normalize the image
+
+    kh, kw = 5, 5  # Kernel height and width
+    H = np.zeros((kh, kw, 3, 3))
+    
+    # diagnostic kernel for each channel
+    for i in range(3):
+        kernel = gaussian(kh, 1.5)
+        H[:, :, i, i] = kernel
+    
+    # cross-channel blurring
+    H[:, :, 0, 1] = 0.6 * H[:, :, 0, 0]  # G->R
+    H[:, :, 1, 0] = 0.6 * H[:, :, 1, 1]  # R->G
+
+    nimg = blur_image(img, H)
+
+    res_img, snrl = restore_image(nimg, H, img)
+    
+    # Display the restored image
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 4, 1)
+    plt.imshow(img)
+    plt.axis('off')
+    plt.title('Original Image')
+
+    plt.subplot(1, 4, 2)
+    plt.imshow(res_img, vmin=0, vmax=1)
+    plt.axis('off')
+    plt.title('Restored Image')
+
+    plt.subplot(1, 4, 3)
+    plt.imshow(nimg, vmin=0, vmax=1)
+    plt.axis('off')
+    plt.title('Blurred Image')
+
+    plt.subplot(1, 4, 4)
+    plt.plot(snrl)
+    plt.title('SNR over iterations')
+    plt.grid(True)
+    plt.tight_layout()
+
+    plt.show()
