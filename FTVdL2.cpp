@@ -334,7 +334,7 @@ public:
 
         // Pre-calculate FFT
         try {
-            // found differential generator Dx บอ Dy (2x2)
+            // found differential generator Dx ยบร Dy (2x2)
             MatrixXd Dx_small(2, 2), Dy_small(2, 2);
             Dx_small << 1, -1, 0, 0;
             Dy_small << 1, 0, -1, 0;
