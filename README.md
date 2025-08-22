@@ -29,3 +29,7 @@ Now, we update this code (FMTVd) that can solve multichanneel information fusion
 
 <img width="1200" height="600" alt="example3" src="https://github.com/user-attachments/assets/80fc5e82-09bf-46b6-a935-21546714fcb8" />
 
+2025/08/22 update:
+Now, we addition a c++ file that achieve a part of the python file, we can use it to solve that L2 sub-problem.
+
+<img width="560" height="420" alt="snr" src="https://github.com/user-attachments/assets/6cad807c-75ee-49a7-934b-98e4e78eccd2" />
